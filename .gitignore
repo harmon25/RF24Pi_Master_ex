@@ -1,6 +1,4 @@
-# sublime sftp config
 sftp-config.json
-
 /_build
 /cover
 /deps
