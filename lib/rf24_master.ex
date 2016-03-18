@@ -21,7 +21,7 @@ use GenServer
     GenServer.cast(pid, {:send, jsonMsg})
   end
 
-  def recivedCount(pid) do
+  def getCounts(pid) do
     GenServer.call(pid, :counts)
   end
 
