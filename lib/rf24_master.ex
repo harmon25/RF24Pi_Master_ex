@@ -1,4 +1,9 @@
 
+defmodule RfMaster.Msg do
+  @derive [Poison.Encoder]
+  defstruct [:type, :to_node, :msg]
+end
+  
 defmodule RfMaster.State do
   @doc ~S"""
   socket :: %Socket
@@ -10,15 +15,50 @@ end
 
 defmodule RfMaster do
 alias RfMaster.State
+alias RfMaster.Msg
 use GenServer
+
+ def buildMsg({to_node, msg_type} = header, msg) when is_tuple(header) and is_bitstring(to_node) and is_integer(msg_type) do
+     {:ok, %Msg{to_node: to_node, type: msg_type, msg: msg} }
+ end
+def buildMsg(_, _) do
+    require Logger
+    Logger.warn("Invalid Msg - pass a header and msg, header is a tuple {to_node, msg_type}")
+end
+def buildMsg(_, _, _) do
+    require Logger
+    Logger.warn("Invalid Msg - pass a header and msg, header is a tuple {to_node, msg_type}")
+    {:err, "invalid msg"}
+end
+ 
+ def buildMsg!({to_node, msg_type} = header, msg) when is_tuple(header) and is_bitstring(to_node) and is_integer(msg_type) do
+     %Msg{to_node: to_node, type: msg_type, msg: msg}
+ end
+ def buildMsg!(_, _) do
+    require Logger
+    Logger.warn("Invalid Msg - pass a header and msg, header is a tuple {to_node, msg_type}")
+    {:err, "invalid msg"}
+ end
+ def buildMsg!(_, _, _) do
+    require Logger
+    Logger.warn("Invalid Msg - pass a header and msg, header is a tuple {to_node, msg_type}")
+    {:err, "invalid msg"}
+end
 
   def start_link() do
     {mod, fun} = Application.get_env :rf24_master, :msg_handler, {__MODULE__, :default_msg_handler}
     GenServer.start_link(__MODULE__, %State{ handler: {mod, fun}, socket_address: Application.get_env(:rf24_master, :socket_address, "ipc:///tmp/rf24d.ipc" ) }, name: __MODULE__)
   end 
 
-  def sendMsg(pid, jsonMsg) do
+  def sendMsg(%Msg{} = msgToJson, pid) do
+    jsonMsg = Poison.encode!(msgToJson)
     GenServer.cast(pid, {:send, jsonMsg})
+  end
+
+  def sendMsg(_, _) do
+    require Logger
+    Logger.info("Invalid Msg - use buildMsg:2 or buildMsg!:2 to create a msg")
+    {:err, "invalid msg"}
   end
 
   def getCounts(pid) do
@@ -43,7 +83,7 @@ use GenServer
     {:noreply, %State{state | sent: sent_one}}
   end
 
-  def handle_info({_,_,msg}, %State{socket: socket, handler: {mod, fun}} = state) do
+  def handle_info({_,_,msg}, %State{handler: {mod, fun}} = state) do
     require Logger
     received_one = state.received + 1
     jsonMsg = String.strip(msg) |> Poison.decode!
@@ -51,7 +91,7 @@ use GenServer
     {:noreply, %State{state | received: received_one}}
   end
 
-  def terminate(_reason, %State{socket: socket} = state) when socket != nil do
+  def terminate(_reason, %State{socket: socket}) when socket != nil do
     require Logger
     Logger.info("closing NN socket")
     :ok = :enm.close(socket)
